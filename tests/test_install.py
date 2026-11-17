@@ -116,7 +116,7 @@ class InstallationTests(unittest.TestCase):
         root = project / ".github/egm-copilot"
         filename = "spécification-équipe.md"
         content = "# Spécification\nÉléphant, français, cœur, Noël, déjà approuvé.\n"
-        (self.source / "docs" / filename).write_text(content, encoding="utf-8")
+        (self.source / "docs" / filename).write_bytes(content.encode("utf-8"))
         options = ["--project", str(project)]
         for attempt in range(2):
             with self.subTest(attempt=attempt), redirect_stdout(io.StringIO()):

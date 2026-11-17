@@ -259,7 +259,10 @@ def uninstall(root):
     check_managed(root, manifest, {})
     removed = {Path(path) for path in managed_files(root, manifest)} | {root / "manifest.json"}
     apply_files({}, removed)
-    boundaries = [(root / path).resolve() for path in manifest["directories"]]
+    boundaries = [
+        Path(os.path.abspath(root / path))
+        for path in manifest["directories"]
+    ]
     directories = {
         parent for file in removed for parent in file.parents
         if any(parent == boundary or boundary in parent.parents for boundary in boundaries)
