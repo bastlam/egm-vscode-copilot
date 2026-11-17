@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "egm-copilot"
+version = "0.1.1"
+description = "Install the Elephant-Goldfish Model workflows for GitHub Copilot in VS Code"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+egm-copilot = "egm_copilot.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["egm_copilot*"]
