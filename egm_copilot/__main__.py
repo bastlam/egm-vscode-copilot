@@ -38,6 +38,8 @@ specifications and review reports. Otherwise use the conversation's language.
 French is fully supported: do not refuse or postpone egm-draft because the
 brief, request or desired artifact is in French. Do not require an English
 translation before continuing.
+Write generated text artifacts as UTF-8. Preserve accents and Unicode
+characters in prose, filenames and paths; do not transliterate French to ASCII.
 This language policy overrides English-only requirements in canonical EGM
 skills, personas and document standards. Interpret "Plain-English" as clear,
 direct language, not as a requirement to write in English. Keep all other
@@ -246,7 +248,7 @@ def install(source, root, skills_dir, agents_dir, revision):
         "files": {relative_path(path, root): digest(content) for path, content in files.items()},
     }
     removed = {Path(path) for path in managed_files(root, old)} - set(files)
-    files[root / "manifest.json"] = text(json.dumps(manifest, indent=2) + "\n")
+    files[root / "manifest.json"] = text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
     apply_files(files, removed)
 
 
@@ -302,7 +304,7 @@ def main(argv=None):
             if not manifest:
                 raise ValueError(f"No EGM Copilot installation found at {root}")
             check_managed(root, manifest, {}, require_present=True)
-            print(json.dumps(manifest, indent=2))
+            print(json.dumps(manifest, indent=2, ensure_ascii=False))
         elif args.command == "uninstall":
             uninstall(root)
             print(f"EGM Copilot removed: {root}")

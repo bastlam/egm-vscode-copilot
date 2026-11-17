@@ -1,2 +1,2 @@
-include README.md install.sh install.ps1
+include README.md install.sh install.ps1 .editorconfig .gitattributes
 recursive-include tests *.py

@@ -111,6 +111,31 @@ class InstallationTests(unittest.TestCase):
             self.install()
         self.assertFalse(self.root.exists())
 
+    def test_utf8_accents_survive_install_status_update_and_uninstall(self):
+        project = self.base / "projet été équipe"
+        root = project / ".github/egm-copilot"
+        filename = "spécification-équipe.md"
+        content = "# Spécification\nÉléphant, français, cœur, Noël, déjà approuvé.\n"
+        (self.source / "docs" / filename).write_text(content, encoding="utf-8")
+        options = ["--project", str(project)]
+        for attempt in range(2):
+            with self.subTest(attempt=attempt), redirect_stdout(io.StringIO()):
+                self.assertEqual(main(["install", *options, "--source", str(self.source)]), 0)
+            self.assertEqual((root / "runtime/docs" / filename).read_bytes(), content.encode("utf-8"))
+        manifest = (root / "manifest.json").read_text(encoding="utf-8")
+        self.assertIn(filename, manifest)
+        self.assertNotIn("\\u00e9", manifest)
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(main(["status", *options]), 0)
+        self.assertIn(filename, output.getvalue())
+        self.assertIn("runtime/docs/" + filename, json.loads(output.getvalue())["files"])
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(main(["uninstall", *options]), 0)
+        self.assertFalse(root.exists())
+        self.assertIn("Write generated text artifacts as UTF-8", LANGUAGE_POLICY)
+        self.assertIn("do not transliterate French to ASCII", LANGUAGE_POLICY)
+
     def test_relative_links_survive_project_relocation(self):
         self.install()
         moved = self.base / "relocated project"
@@ -164,7 +189,7 @@ class InstallationTests(unittest.TestCase):
             "--source", str(self.source),
         ]), 0)
         manifest = self.base / "cli project/.github/egm-copilot/manifest.json"
-        self.assertEqual(json.loads(manifest.read_text())["revision"], "local-unverified")
+        self.assertEqual(json.loads(manifest.read_text(encoding="utf-8"))["revision"], "local-unverified")
 
     @unittest.skipIf(os.name == "nt" or not shutil.which("bash"), "Requires Linux Bash")
     def test_linux_installer_from_another_directory(self):
@@ -179,7 +204,7 @@ class InstallationTests(unittest.TestCase):
         ])
 
     def run_installer(self, command):
-        project = self.base / "script project"
+        project = self.base / "projet été avec espaces"
         result = subprocess.run(
             [*command, "--project", str(project), "--source", str(self.source)],
             cwd=self.base, capture_output=True, text=True,
