@@ -16,12 +16,14 @@ principalement la CLI et ne constitue pas une validation VS Code.
 
 ## Prérequis
 
-- Python 3.10 ou plus récent ; Git pour télécharger EGM.
+- Python 3.10 ou plus récent sous Linux ; Git pour télécharger EGM.
 - VS Code récent avec GitHub Copilot connecté et un accès aux fonctionnalités agents.
 - Une session prenant en charge les skills, agents personnalisés et sous-agents.
 - Accès HTTPS à GitHub pour l'installation en ligne ; aucune élévation requise.
 
-Les scripts ne téléchargent pas Python ou Git et ne modifient pas les réglages
+Sous Windows, si aucun Python 3.10+ compatible n'est détecté, `install.ps1`
+télécharge le Python embarqué officiel depuis `python.org` (accès HTTPS requis).
+Les scripts ne téléchargent pas Git et ne modifient pas les réglages
 de sécurité du système. Ils utilisent seulement la bibliothèque standard Python.
 Les dépendances propres à certains workflows EGM restent celles de l'amont.
 
@@ -67,6 +69,17 @@ py -3 -m egm_copilot install --scope project --project "C:\Projets\mon-projet"
 
 Sans `--project`, la portée projet utilise le répertoire courant, pas le dossier
 du script. `EGM_PYTHON` permet de choisir l'exécutable Python des installateurs.
+Si cette variable est définie, un exécutable absent ou incompatible provoque
+une erreur, sans téléchargement de secours.
+
+Le Python portable de secours est la version 3.14.10, pour Windows x64, ARM64
+ou x86. Son archive est vérifiée par SHA-256 avant extraction dans un répertoire
+temporaire, supprimé en fin d'exécution, y compris en cas d'erreur. Il ne nécessite
+ni droits administrateur, ni pip, ni modification du `PATH` ou du registre.
+Il n'est pas conservé pour les commandes ultérieures de statut ou de suppression :
+ces commandes nécessitent un Python installé séparément.
+La console indique les étapes en cours : recherche et validation de Python,
+téléchargement éventuel, vérification, extraction, installation et nettoyage.
 
 ## Dans VS Code
 

@@ -203,6 +203,123 @@ class InstallationTests(unittest.TestCase):
             str(Path(__file__).resolve().parents[1] / "install.ps1"),
         ])
 
+    @unittest.skipUnless(os.name == "nt", "Requires Windows PowerShell")
+    def test_windows_portable_python_fallback(self):
+        wrapper = self.base / "bootstrap.ps1"
+        wrapper.write_text(r"""
+$ErrorActionPreference = 'Stop'
+function Get-Command {
+    param($Name, $ErrorAction)
+    if ($env:EGM_TEST_SCENARIO -eq 'empty-launcher' -and $Name -eq 'py') {
+        [PSCustomObject]@{ Source = 'Invoke-EmptyLauncher' }
+    }
+}
+function Invoke-EmptyLauncher { $global:LASTEXITCODE = 103 }
+function Invoke-WebRequest {
+    param($Uri, $OutFile, [switch]$UseBasicParsing)
+    Set-Content -LiteralPath $env:EGM_TEST_DOWNLOAD -Value $Uri
+    if ($env:EGM_TEST_SCENARIO -eq 'download-error') { throw 'Test download failed' }
+    Set-Content -LiteralPath $OutFile -Value 'Mock archive'
+}
+function Get-FileHash {
+    param($LiteralPath, $Algorithm)
+    $hash = '90905e64a840557d8c1bc4f5b74db3d7ee85e3ffb217611cac1c7813acea4159'
+    if ($env:EGM_TEST_SCENARIO -eq 'hash-error') { $hash = 'invalid' }
+    [PSCustomObject]@{ Hash = $hash }
+}
+function Expand-Archive {
+    param($LiteralPath, $DestinationPath)
+    Set-Content -LiteralPath $env:EGM_TEST_EXTRACTED -Value 'extracted'
+    Set-Item -Path "Function:\global:$DestinationPath\python.exe" -Value {
+        if ($env:EGM_TEST_SCENARIO -eq 'installer-error') {
+            $global:LASTEXITCODE = 23
+            return
+        }
+        & $env:EGM_TEST_PYTHON -I @args
+        $global:LASTEXITCODE = $LASTEXITCODE
+    }
+}
+$previousProtocol = [Net.ServicePointManager]::SecurityProtocol
+try {
+    & $env:EGM_TEST_INSTALLER @args
+    $code = $LASTEXITCODE
+} finally {
+    [IO.File]::WriteAllText($env:EGM_TEST_RESTORED, $env:PYTHONPATH)
+    if ([Net.ServicePointManager]::SecurityProtocol -ne $previousProtocol) {
+        throw 'TLS settings were not restored'
+    }
+}
+exit $code
+""", encoding="ascii")
+        shells = {shutil.which("powershell"), shutil.which("pwsh")} - {None}
+        scenarios = ("missing", "empty-launcher", "download-error", "hash-error",
+                     "installer-error", "explicit-invalid")
+        for shell in sorted(shells):
+            for scenario in scenarios:
+                with self.subTest(shell=shell, scenario=scenario):
+                    case = self.base / Path(shell).stem / scenario
+                    case.mkdir(parents=True)
+                    temporary = case / "temp"
+                    temporary.mkdir()
+                    project = case / "project with spaces"
+                    download = case / "download.txt"
+                    extracted = case / "extracted.txt"
+                    restored = case / "restored.txt"
+                    result = subprocess.run(
+                        [shell, "-NoProfile", "-NonInteractive", "-File", str(wrapper),
+                         "--project", str(project), "--source", str(self.source)],
+                        cwd=self.base, capture_output=True, text=True,
+                        env={
+                            **os.environ,
+                            "EGM_PYTHON": "missing-egm-python" if scenario == "explicit-invalid" else "",
+                            "EGM_TEST_SCENARIO": scenario,
+                            "EGM_TEST_PYTHON": sys.executable,
+                            "EGM_TEST_INSTALLER": str(Path(__file__).resolve().parents[1] / "install.ps1"),
+                            "EGM_TEST_DOWNLOAD": str(download),
+                            "EGM_TEST_EXTRACTED": str(extracted),
+                            "EGM_TEST_RESTORED": str(restored),
+                            "PROCESSOR_ARCHITECTURE": "AMD64",
+                            "PROCESSOR_ARCHITEW6432": "AMD64",
+                            "PYTHONPATH": "original python path",
+                            "TEMP": str(temporary),
+                            "TMP": str(temporary),
+                        },
+                    )
+                    self.assertEqual(list(temporary.iterdir()), [])
+                    self.assertEqual(restored.read_text(), "original python path")
+                    self.assertIn("[EGM] Searching for Python 3.10+...", result.stdout)
+                    if scenario == "explicit-invalid":
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertIn("EGM_PYTHON", result.stderr)
+                        self.assertFalse(download.exists())
+                        self.assertNotIn("[EGM] Installation completed.", result.stdout)
+                        continue
+                    self.assertIn("Downloading portable Python", result.stdout)
+                    self.assertIn("[EGM] Removing temporary portable Python files...", result.stdout)
+                    self.assertEqual("Verifying portable Python archive" in result.stdout,
+                                     scenario != "download-error")
+                    self.assertEqual("Extracting portable Python" in result.stdout,
+                                     scenario not in ("download-error", "hash-error"))
+                    self.assertTrue(download.exists(), result.stdout + result.stderr)
+                    self.assertIn("https://www.python.org/", download.read_text())
+                    self.assertEqual(extracted.exists(),
+                                     scenario not in ("download-error", "hash-error"))
+                    if scenario in ("missing", "empty-launcher"):
+                        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                        self.assertTrue((project / ".github/agents/egm.agent.md").is_file())
+                        self.assertIn("[EGM] Installing EGM...", result.stdout)
+                        self.assertIn("[EGM] Installation completed.", result.stdout)
+                    else:
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertNotIn("[EGM] Installation completed.", result.stdout)
+                        self.assertFalse((project / ".github").exists())
+                        if scenario == "installer-error":
+                            self.assertEqual(result.returncode, 23)
+                            self.assertIn("[EGM] Installation failed (exit code 23).", result.stdout)
+                        else:
+                            self.assertIn("download failed" if scenario == "download-error"
+                                          else "SHA-256", result.stderr)
+
     def run_installer(self, command):
         project = self.base / "projet été avec espaces"
         result = subprocess.run(
